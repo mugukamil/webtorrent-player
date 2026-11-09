@@ -168,6 +168,12 @@ class TorrentCard {
         li.classList.add('other')
         li.title = 'Not a video file'
       }
+      // Same-origin service-worker URL + download attr = native browser download;
+      // the SW streams pieces on demand while the browser's download manager shows progress
+      const dl = el('a', 'dl-btn', 'Download')
+      dl.href = file.streamURL
+      dl.download = file.name
+      li.append(dl)
       this.fileList.append(li)
     })
     if (!anyVideo) this.fileList.append(el('li', 'none', 'No video files found in this torrent.'))

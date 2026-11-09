@@ -36,12 +36,12 @@
   }
   input[type=text]:focus { border-color: var(--accent); }
   input[type=text]:disabled { opacity: .5; }
-  button {
+  button, .dl-btn {
     cursor: pointer; border: 1px solid var(--border); border-radius: 10px;
     background: var(--panel-2); color: var(--text); padding: 10px 16px; font-size: 14px;
   }
   button:disabled { opacity: .5; cursor: default; }
-  button:not(:disabled):hover { border-color: var(--accent); }
+  button:not(:disabled):hover, .dl-btn:hover { border-color: var(--accent); }
   button.primary { background: var(--accent); border-color: var(--accent); color: #0d0f16; font-weight: 600; }
   .hint { color: var(--muted); font-size: 12.5px; margin: 0 0 22px; }
   #bootStatus { color: var(--muted); font-size: 13.5px; margin: 0 0 22px; }
@@ -73,7 +73,8 @@
   .badge { font-size: 10.5px; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
   .badge.warn { color: #ffcf7a; border-color: #6b5a2a; }
   li.other .file-name { color: var(--muted); }
-  .play-btn { padding: 5px 12px; font-size: 12.5px; border-radius: 8px; flex-shrink: 0; }
+  .play-btn, .dl-btn { padding: 5px 12px; font-size: 12.5px; border-radius: 8px; flex-shrink: 0; }
+  .dl-btn { text-decoration: none; }
   li.none { color: var(--muted); font-size: 13px; }
 
   #toast {
