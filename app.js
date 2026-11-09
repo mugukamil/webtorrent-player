@@ -5,15 +5,12 @@ const $ = sel => document.querySelector(sel)
 const VIDEO_EXTS = new Set(['.mp4', '.m4v', '.webm', '.mkv', '.mov', '.avi', '.ogv', '.flv', '.wmv', '.mpg', '.mpeg', '.ts', '.m2ts', '.3gp'])
 // Containers/codecs the <video> element can usually handle natively
 const NATIVE_EXTS = new Set(['.mp4', '.m4v', '.webm', '.ogv'])
-// Extra WebRTC trackers appended to every torrent (browsers can't use udp/tcp ones)
-const EXTRA_TRACKERS = [
-  'wss://tracker.openwebtorrent.com',
-  'wss://tracker.btorrent.xyz',
-  'wss://tracker.fastcast.nz'
-]
+// Extra WebRTC trackers appended to every torrent (browsers can't use udp/tcp ones).
+// fastcast.nz and btorrent.xyz are dead/dying — keeping them only adds console noise.
+const EXTRA_TRACKERS = ['wss://tracker.openwebtorrent.com']
 
-// Sintel — free (CC) movie, seeded with WebRTC peers, good for testing
-const SAMPLE_MAGNET = 'magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel&tr=udp%3A%2F%2Fexplodie.org%3A6969&tr=udp%3A%2F%2Ftracker.coppersurfer.tk%3A6969&tr=udp%3A%2F%2Ftracker.empire-js.us%3A1337&tr=udp%3A%2F%2Ftracker.leechers-paradise.org%3A6969&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337&tr=wss%3A%2F%2Ftracker.btorrent.xyz&tr=wss%3A%2F%2Ftracker.fastcast.nz&tr=wss%3A%2F%2Ftracker.openwebtorrent.com&ws=https%3A%2F%2Fwebtorrent.io%2Ftorrents%2F&xs=https%3A%2F%2Fwebtorrent.io%2Ftorrents%2Fsintel.torrent'
+// Sintel — free (CC) movie, seeded with WebRTC peers + an HTTPS webseed, good for testing
+const SAMPLE_MAGNET = 'magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel&tr=udp%3A%2F%2Fexplodie.org%3A6969&tr=udp%3A%2F%2Ftracker.coppersurfer.tk%3A6969&tr=udp%3A%2F%2Ftracker.empire-js.us%3A1337&tr=udp%3A%2F%2Ftracker.leechers-paradise.org%3A6969&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337&tr=wss%3A%2F%2Ftracker.openwebtorrent.com&ws=https%3A%2F%2Fwebtorrent.io%2Ftorrents%2F&xs=https%3A%2F%2Fwebtorrent.io%2Ftorrents%2Fsintel.torrent'
 
 /* ---------- small helpers ---------- */
 
@@ -57,6 +54,36 @@ function toast (msg, isError = false) {
   t.classList.add('show')
   clearTimeout(toastTimer)
   toastTimer = setTimeout(() => t.classList.remove('show'), isError ? 8000 : 4000)
+}
+
+/* ---------- persistence across refreshes ---------- */
+
+// The magnet list lives in localStorage. Downloaded chunks already persist
+// separately in the browser's private file system (fsa-chunk-store, keyed by
+// name + infoHash), so a re-added torrent resumes from where it left off.
+const STORE_KEY = 'webtorrent-player:v1'
+
+function storeLoad () {
+  try { return JSON.parse(localStorage.getItem(STORE_KEY)) || [] } catch (err) { return [] }
+}
+
+function storeSave (list) {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(list)) } catch (err) { /* quota / private mode */ }
+}
+
+function storeAdd (infoHash, magnet) {
+  if (!infoHash || !magnet) return
+  const list = storeLoad()
+  if (!list.some(e => e.infoHash === infoHash)) {
+    list.push({ infoHash, magnet })
+    storeSave(list)
+  }
+}
+
+function storeRemove (infoHash) {
+  const list = storeLoad()
+  const next = list.filter(e => e.infoHash !== infoHash)
+  if (next.length !== list.length) storeSave(next)
 }
 
 /* ---------- library + client boot ---------- */
@@ -104,6 +131,14 @@ async function boot () {
     $('#addBtn').disabled = false
     $('#sampleBtn').disabled = false
     $('#magnetInput').focus()
+
+    // Best-effort: ask the browser not to evict stored chunks under storage pressure
+    if (navigator.storage && navigator.storage.persist) {
+      navigator.storage.persist().catch(() => {})
+    }
+
+    // Re-add torrents from the previous session (they resume from persisted chunks)
+    for (const { magnet } of storeLoad()) addTorrent(magnet)
   } catch (err) {
     status.textContent = `Startup failed: ${err.message}`
     status.classList.add('error')
@@ -135,7 +170,10 @@ class TorrentCard {
     $('#torrents').prepend(this.root)
     cards.push(this)
 
-    torrent.once('_infoHash', () => { this.sub.textContent = torrent.infoHash })
+    torrent.once('_infoHash', () => {
+      this.sub.textContent = torrent.infoHash
+      storeAdd(torrent.infoHash, torrent.magnetURI)
+    })
     torrent.once('ready', () => {
       this.title.textContent = torrent.name || torrent.infoHash
       this.renderFiles()
@@ -220,6 +258,7 @@ class TorrentCard {
     if (this.destroyed) return
     this.destroyed = true
     this.root.remove()
+    storeRemove(this.torrent.infoHash)
     const i = cards.indexOf(this)
     if (i >= 0) cards.splice(i, 1)
     if (playingCard === this) hidePlayer()
